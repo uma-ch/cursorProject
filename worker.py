@@ -6,11 +6,32 @@ import asyncio
 import json
 
 import websockets
+from aiohttp import web
 
 from tools import ALL_TOOLS
 
+connected = False
+
+
+async def healthz(request: web.Request) -> web.Response:
+    if connected:
+        return web.Response(text="ok")
+    return web.Response(status=503, text="disconnected")
+
+
+async def run_health_server(port: int) -> None:
+    app = web.Application()
+    app.router.add_get("/healthz", healthz)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Health server listening on 0.0.0.0:{port}")
+
 
 async def run_worker(server_url: str) -> None:
+    global connected
+
     schemas = [schema for schema, _ in ALL_TOOLS]
     handlers = {schema["name"]: handler for schema, handler in ALL_TOOLS}
 
@@ -18,6 +39,7 @@ async def run_worker(server_url: str) -> None:
         try:
             async with websockets.connect(server_url) as ws:
                 await ws.send(json.dumps({"type": "register", "tools": schemas}))
+                connected = True
                 print(f"Registered {len(schemas)} tool(s) with hub at {server_url}")
 
                 async for raw in ws:
@@ -48,17 +70,24 @@ async def run_worker(server_url: str) -> None:
                     }))
 
         except (ConnectionRefusedError, websockets.ConnectionClosed, OSError) as e:
+            connected = False
             print(f"Connection lost ({e}), reconnecting in 2s...")
             await asyncio.sleep(2)
+
+
+async def async_main(server_url: str, health_port: int) -> None:
+    await run_health_server(health_port)
+    await run_worker(server_url)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tool worker -- connects to a conversation hub")
     parser.add_argument("--server", default="ws://localhost:9600", help="WebSocket URL of the hub")
+    parser.add_argument("--health-port", type=int, default=8080, help="Port for the /healthz endpoint")
     args = parser.parse_args()
 
     print(f"Starting worker, connecting to {args.server}")
-    asyncio.run(run_worker(args.server))
+    asyncio.run(async_main(args.server, args.health_port))
 
 
 if __name__ == "__main__":

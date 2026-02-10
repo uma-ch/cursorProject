@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: uma-tool-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker.py --server $HUB_URL --health-port 8080
+    healthCheckPath: /healthz
+    envVars:
+      - key: HUB_URL
+        sync: false
