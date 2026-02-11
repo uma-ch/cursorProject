@@ -115,7 +115,11 @@ class Hub:
         for schema in tool_schemas:
             name = schema["name"]
             self._tool_to_worker[name] = worker_id
+
+            self._tool_schemas = [s for s in self._tool_schemas if s["name"] != name]
             self._tool_schemas.append(schema)
+
+            self.conversation.tools = [s for s in self.conversation.tools if s["name"] != name]
 
             async def _remote_handler(__name=name, **kwargs: Any) -> str:
                 return await self._dispatch(__name, kwargs)
