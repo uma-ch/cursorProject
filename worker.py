@@ -53,11 +53,14 @@ async def run_worker(server_url: str) -> None:
                         result = f"Error: {e}"
                     if not isinstance(result, str):
                         result = json.dumps(result)
-                    await ws.send(json.dumps({
-                        "type": "tool_result",
-                        "call_id": call_id,
-                        "content": result,
-                    }))
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "tool_result",
+                            "call_id": call_id,
+                            "content": result,
+                        }))
+                    except Exception:
+                        await ws.close()
 
                 async for raw in ws:
                     msg = json.loads(raw)
