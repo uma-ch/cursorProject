@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 
 READ_FILE_SCHEMA = {
@@ -45,7 +46,55 @@ def list_directory(path: str = ".") -> str:
     return "\n".join(sorted(entries))
 
 
+RUN_COMMAND_SCHEMA = {
+    "name": "run_command",
+    "description": "Execute a shell command and return its output. Use for running scripts, installing packages, compiling code, running tests, or any terminal operation.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "The shell command to execute.",
+            },
+            "working_directory": {
+                "type": "string",
+                "description": "Working directory for the command. Defaults to current directory.",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Maximum seconds to wait for the command to complete. Defaults to 120.",
+            },
+        },
+        "required": ["command"],
+    },
+}
+
+
+def run_command(command: str, working_directory: str = ".", timeout: int = 120) -> str:
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=working_directory,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        output = ""
+        if result.stdout:
+            output += result.stdout
+        if result.stderr:
+            output += result.stderr
+        output += f"\n[exit code: {result.returncode}]"
+        return output.strip()
+    except subprocess.TimeoutExpired:
+        return f"Error: command timed out after {timeout}s"
+    except Exception as e:
+        return f"Error: {e}"
+
+
 ALL_TOOLS = [
     (READ_FILE_SCHEMA, read_file),
     (LIST_DIRECTORY_SCHEMA, list_directory),
+    (RUN_COMMAND_SCHEMA, run_command),
 ]

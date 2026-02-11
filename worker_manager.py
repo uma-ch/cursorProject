@@ -132,10 +132,10 @@ class PoolManager:
     @staticmethod
     def _kill_process(pid: int) -> None:
         try:
-            os.kill(pid, signal.SIGTERM)
+            os.kill(pid, signal.SIGINT)
         except (OSError, ProcessLookupError):
             return
-        deadline = time.time() + 3
+        deadline = time.time() + 2
         while time.time() < deadline:
             try:
                 os.kill(pid, 0)
@@ -268,11 +268,113 @@ def create_app() -> web.Application:
     return app
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Worker Pool Manager")
-    parser.add_argument("--port", type=int, default=9090, help="Port for the manager UI (default 9090)")
-    args = parser.parse_args()
-
+def cmd_serve(args: argparse.Namespace) -> None:
     app = create_app()
     print(f"Worker Pool Manager running on http://0.0.0.0:{args.port}")
     web.run_app(app, host="0.0.0.0", port=args.port)
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    p = PoolManager()
+    p.set_config(args.hub_url, args.base_port)
+    print(f"Initialized pool config: hub_url={args.hub_url}, base_port={args.base_port}")
+
+
+def cmd_add(args: argparse.Namespace) -> None:
+    p = PoolManager()
+    if not p.hub_url:
+        print("Error: hub_url not configured. Run 'init' first.")
+        sys.exit(1)
+    for _ in range(args.count):
+        entry = p.add_worker()
+        print(f"Started worker {entry['id']} on port {entry['port']} (pid {entry['pid']})")
+
+
+def cmd_remove(args: argparse.Namespace) -> None:
+    p = PoolManager()
+    if args.id:
+        if p.remove_worker(args.id):
+            print(f"Stopped worker {args.id}")
+        else:
+            print(f"Worker {args.id} not found")
+            sys.exit(1)
+    else:
+        workers = list(reversed(p.workers))[:args.count]
+        for w in workers:
+            p.remove_worker(w["id"])
+            print(f"Stopped worker {w['id']}")
+
+
+def cmd_status(_args: argparse.Namespace) -> None:
+    p = PoolManager()
+    if not p.workers:
+        print("No workers in pool")
+        return
+    statuses = asyncio.run(p.get_all_status())
+    print(f"Worker Pool (hub: {p.hub_url})")
+    print(f"{'ID':<6} {'Port':<7} {'PID':<8} {'Process':<10} {'Health'}")
+    for s in statuses:
+        alive_str = "alive" if s["alive"] else "dead"
+        pid_str = str(s["pid"]) if s["alive"] else "--"
+        print(f"{s['id']:<6} {s['port']:<7} {pid_str:<8} {alive_str:<10} {s['health']}")
+
+
+def cmd_stop_all(_args: argparse.Namespace) -> None:
+    p = PoolManager()
+    count = p.remove_all()
+    print(f"Stopped {count} worker(s)")
+
+
+def cmd_scale(args: argparse.Namespace) -> None:
+    p = PoolManager()
+    if not p.hub_url:
+        print("Error: hub_url not configured. Run 'init' first.")
+        sys.exit(1)
+    result = p.scale_to(args.target)
+    for w in result.get("added", []):
+        print(f"Started worker {w['id']} on port {w['port']} (pid {w['pid']})")
+    for wid in result.get("removed", []):
+        print(f"Stopped worker {wid}")
+    print(f"Pool now has {result['total']} worker(s)")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Worker Pool Manager")
+    subs = parser.add_subparsers(dest="command")
+
+    serve_p = subs.add_parser("serve", help="Run the web UI")
+    serve_p.add_argument("--port", type=int, default=9090, help="Port for the manager UI (default 9090)")
+
+    init_p = subs.add_parser("init", help="Initialize pool config")
+    init_p.add_argument("--hub-url", required=True, help="WebSocket URL of the hub")
+    init_p.add_argument("--base-port", type=int, default=8081, help="Starting port for workers (default 8081)")
+
+    add_p = subs.add_parser("add", help="Add worker(s) to the pool")
+    add_p.add_argument("--count", type=int, default=1, help="Number of workers to add (default 1)")
+
+    remove_p = subs.add_parser("remove", help="Remove worker(s) from the pool")
+    remove_p.add_argument("--id", default=None, help="ID of a specific worker to remove")
+    remove_p.add_argument("--count", type=int, default=1, help="Number of workers to remove from the end (default 1)")
+
+    subs.add_parser("status", help="Show status of all workers")
+    subs.add_parser("stop-all", help="Stop all workers")
+
+    scale_p = subs.add_parser("scale", help="Scale pool to target size")
+    scale_p.add_argument("target", type=int, help="Target number of workers")
+
+    args = parser.parse_args()
+
+    commands = {
+        "serve": cmd_serve,
+        "init": cmd_init,
+        "add": cmd_add,
+        "remove": cmd_remove,
+        "status": cmd_status,
+        "stop-all": cmd_stop_all,
+        "scale": cmd_scale,
+    }
+
+    if args.command in commands:
+        commands[args.command](args)
+    else:
+        parser.print_help()

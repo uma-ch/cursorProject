@@ -42,6 +42,23 @@ async def run_worker(server_url: str) -> None:
                 connected = True
                 print(f"Registered {len(schemas)} tool(s) with hub at {server_url}")
 
+                async def handle_call(call_id: str, name: str, tool_input: dict, handler) -> None:
+                    loop = asyncio.get_event_loop()
+                    try:
+                        if asyncio.iscoroutinefunction(handler):
+                            result = await handler(**tool_input)
+                        else:
+                            result = await loop.run_in_executor(None, lambda: handler(**tool_input))
+                    except Exception as e:
+                        result = f"Error: {e}"
+                    if not isinstance(result, str):
+                        result = json.dumps(result)
+                    await ws.send(json.dumps({
+                        "type": "tool_result",
+                        "call_id": call_id,
+                        "content": result,
+                    }))
+
                 async for raw in ws:
                     msg = json.loads(raw)
                     if msg["type"] != "tool_call":
@@ -53,21 +70,13 @@ async def run_worker(server_url: str) -> None:
 
                     handler = handlers.get(name)
                     if handler is None:
-                        result = f"Error: unknown tool '{name}'"
+                        await ws.send(json.dumps({
+                            "type": "tool_result",
+                            "call_id": call_id,
+                            "content": f"Error: unknown tool '{name}'",
+                        }))
                     else:
-                        try:
-                            result = handler(**tool_input)
-                        except Exception as e:
-                            result = f"Error: {e}"
-
-                    if not isinstance(result, str):
-                        result = json.dumps(result)
-
-                    await ws.send(json.dumps({
-                        "type": "tool_result",
-                        "call_id": call_id,
-                        "content": result,
-                    }))
+                        asyncio.create_task(handle_call(call_id, name, tool_input, handler))
 
         except (ConnectionRefusedError, websockets.ConnectionClosed, OSError) as e:
             connected = False

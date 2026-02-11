@@ -217,4 +217,11 @@ class Hub:
             "input": tool_input,
         }))
 
-        return await fut
+        try:
+            return await asyncio.wait_for(fut, timeout=120)
+        except asyncio.TimeoutError:
+            self._pending.pop(call_id, None)
+            self._call_to_worker.pop(call_id, None)
+            if not any(w == worker_id for w in self._call_to_worker.values()):
+                self._busy_workers.discard(worker_id)
+            return f"Error: tool '{tool_name}' timed out after 120s"
