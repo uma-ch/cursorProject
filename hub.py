@@ -18,7 +18,9 @@ class Hub:
         self.port = port
         self._server: Server | None = None
         self._worker_senders: dict[str, Callable[[str], Awaitable[None]]] = {}
-        self._tool_to_worker: dict[str, str] = {}
+        self._tool_to_workers: dict[str, list[str]] = {}
+        self._tool_rr_index: dict[str, int] = {}
+        self._session_affinity: dict[str, str] = {}
         self._pending: dict[str, asyncio.Future[str]] = {}
         self._worker_ready = asyncio.Event()
         self._worker_count = 0
@@ -44,19 +46,20 @@ class Hub:
 
     def get_workers_info(self) -> list[dict[str, Any]]:
         workers: dict[str, list[str]] = {}
-        for tool_name, worker_id in self._tool_to_worker.items():
-            if worker_id in self._worker_senders:
-                workers.setdefault(worker_id, []).append(tool_name)
+        for tool_name, worker_ids in self._tool_to_workers.items():
+            for wid in worker_ids:
+                if wid in self._worker_senders:
+                    workers.setdefault(wid, []).append(tool_name)
         return [
             {"worker_id": wid, "tools": tools}
             for wid, tools in workers.items()
         ]
 
-    def register_tools_on(self, conv: Conversation) -> None:
+    def register_tools_on(self, conv: Conversation, session_id: str | None = None) -> None:
         for schema in self._tool_schemas:
             name = schema["name"]
-            async def _handler(__name=name, **kwargs: Any) -> str:
-                return await self._dispatch(__name, kwargs)
+            async def _handler(__name=name, __sid=session_id, **kwargs: Any) -> str:
+                return await self._dispatch(__name, kwargs, session_id=__sid)
             conv.register_tool(schema, _handler)
 
     async def _handle_worker(self, ws: ServerConnection) -> None:
@@ -111,33 +114,69 @@ class Hub:
 
     def _cleanup_worker(self, worker_id: str) -> None:
         self._worker_senders.pop(worker_id, None)
-        tools_to_remove = [t for t, w in self._tool_to_worker.items() if w == worker_id]
-        for t in tools_to_remove:
-            self._tool_to_worker.pop(t, None)
+
+        empty_tools: list[str] = []
+        for tool_name, workers in self._tool_to_workers.items():
+            if worker_id in workers:
+                workers.remove(worker_id)
+                if not workers:
+                    empty_tools.append(tool_name)
+
+        for t in empty_tools:
+            del self._tool_to_workers[t]
+            self._tool_rr_index.pop(t, None)
             self.conversation.tool_handlers.pop(t, None)
             self.conversation.tools = [s for s in self.conversation.tools if s["name"] != t]
             self._tool_schemas = [s for s in self._tool_schemas if s["name"] != t]
-        if tools_to_remove:
-            self._worker_count -= 1
+
+        stale_sessions = [sid for sid, wid in self._session_affinity.items() if wid == worker_id]
+        for sid in stale_sessions:
+            del self._session_affinity[sid]
+
+        self._worker_count -= 1
         print(f"Worker {worker_id} disconnected")
 
     def _register_tools(self, worker_id: str, tool_schemas: list[dict[str, Any]]) -> None:
         for schema in tool_schemas:
             name = schema["name"]
-            self._tool_to_worker[name] = worker_id
+            workers = self._tool_to_workers.setdefault(name, [])
+            if worker_id not in workers:
+                workers.append(worker_id)
 
-            self._tool_schemas = [s for s in self._tool_schemas if s["name"] != name]
-            self._tool_schemas.append(schema)
+            if not any(s["name"] == name for s in self._tool_schemas):
+                self._tool_schemas.append(schema)
+                self._tool_rr_index[name] = 0
 
-            self.conversation.tools = [s for s in self.conversation.tools if s["name"] != name]
+                async def _remote_handler(__name=name, **kwargs: Any) -> str:
+                    return await self._dispatch(__name, kwargs)
 
-            async def _remote_handler(__name=name, **kwargs: Any) -> str:
-                return await self._dispatch(__name, kwargs)
+                self.conversation.register_tool(schema, _remote_handler)
 
-            self.conversation.register_tool(schema, _remote_handler)
+    def _pick_worker(self, tool_name: str, session_id: str | None) -> str | None:
+        workers = self._tool_to_workers.get(tool_name)
+        if not workers:
+            return None
 
-    async def _dispatch(self, tool_name: str, tool_input: dict[str, Any]) -> str:
-        worker_id = self._tool_to_worker.get(tool_name)
+        if session_id:
+            affinity_wid = self._session_affinity.get(session_id)
+            if affinity_wid and affinity_wid in workers and affinity_wid in self._worker_senders:
+                return affinity_wid
+
+        alive = [w for w in workers if w in self._worker_senders]
+        if not alive:
+            return None
+
+        idx = self._tool_rr_index.get(tool_name, 0) % len(alive)
+        self._tool_rr_index[tool_name] = idx + 1
+        chosen = alive[idx]
+
+        if session_id:
+            self._session_affinity[session_id] = chosen
+
+        return chosen
+
+    async def _dispatch(self, tool_name: str, tool_input: dict[str, Any], session_id: str | None = None) -> str:
+        worker_id = self._pick_worker(tool_name, session_id)
         if worker_id is None:
             return f"Error: no worker registered for tool '{tool_name}'"
 

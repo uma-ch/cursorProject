@@ -161,7 +161,7 @@ async def session_prompt_handler(request: web.Request) -> web.Response:
         return web.Response(status=400, text="missing 'prompt' field")
 
     conv = s.load(session_id)
-    h.register_tools_on(conv)
+    h.register_tools_on(conv, session_id=session_id)
 
     result = await conv.run_until_done(prompt_text)
     s.save(session_id, conv)
@@ -183,7 +183,7 @@ async def session_chat_handler(request: web.Request) -> web.WebSocketResponse:
         return ws
 
     conv = s.load(session_id)
-    h.register_tools_on(conv)
+    h.register_tools_on(conv, session_id=session_id)
 
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
