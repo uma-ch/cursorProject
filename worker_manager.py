@@ -89,7 +89,7 @@ class PoolManager:
         log_path = os.path.join(LOGS_DIR, f"worker-{wid}.log")
         log_file = open(log_path, "w")
         proc = subprocess.Popen(
-            [sys.executable, "worker.py", "--server", self.hub_url, "--health-port", str(port)],
+            [sys.executable, "worker.py", "--server", self.hub_url, "--health-port", str(port), "--id", wid],
             stdout=log_file,
             stderr=subprocess.STDOUT,
         )

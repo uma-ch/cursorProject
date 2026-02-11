@@ -75,9 +75,12 @@ class Hub:
             conv.register_tool(schema, _handler)
 
     async def _handle_worker(self, ws: ServerConnection) -> None:
-        worker_id = str(uuid.uuid4())[:8]
+        first_raw = await ws.recv()
+        first_msg = json.loads(first_raw)
+        worker_id = first_msg.get("worker_id") or str(uuid.uuid4())[:8]
         self._worker_senders[worker_id] = ws.send
         print(f"Worker {worker_id} connected")
+        self._process_message(worker_id, first_raw)
 
         try:
             async for raw in ws:
@@ -93,9 +96,15 @@ class Hub:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        worker_id = str(uuid.uuid4())[:8]
+        first_msg_raw = await ws.receive()
+        if first_msg_raw.type != web.WSMsgType.TEXT:
+            await ws.close()
+            return ws
+        first_msg = json.loads(first_msg_raw.data)
+        worker_id = first_msg.get("worker_id") or str(uuid.uuid4())[:8]
         self._worker_senders[worker_id] = ws.send_str
         print(f"Worker {worker_id} connected (aiohttp)")
+        self._process_message(worker_id, first_msg_raw.data)
 
         try:
             async for msg in ws:
