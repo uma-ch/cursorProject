@@ -42,6 +42,16 @@ class Hub:
             self._worker_ready.clear()
             await self._worker_ready.wait()
 
+    def get_workers_info(self) -> list[dict[str, Any]]:
+        workers: dict[str, list[str]] = {}
+        for tool_name, worker_id in self._tool_to_worker.items():
+            if worker_id in self._worker_senders:
+                workers.setdefault(worker_id, []).append(tool_name)
+        return [
+            {"worker_id": wid, "tools": tools}
+            for wid, tools in workers.items()
+        ]
+
     def register_tools_on(self, conv: Conversation) -> None:
         for schema in self._tool_schemas:
             name = schema["name"]

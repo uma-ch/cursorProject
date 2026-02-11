@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMA Hub</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+#sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: #16213e;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2a2a4a;
+}
+
+#sidebar h2 {
+  padding: 16px;
+  font-size: 18px;
+  color: #a0c4ff;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+#new-agent-btn {
+  margin: 12px 16px;
+  padding: 10px;
+  background: #0f3460;
+  color: #a0c4ff;
+  border: 1px solid #a0c4ff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+#new-agent-btn:hover { background: #1a4a7a; }
+
+.sidebar-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+}
+
+#session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.session-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.session-item:hover { background: #1a2a4e; }
+.session-item.active { background: #1a2a4e; border-left-color: #a0c4ff; }
+
+.session-item .close-session {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.session-item:hover .close-session { opacity: 1; }
+
+#workers-panel {
+  border-top: 1px solid #2a2a4a;
+  padding: 8px 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.worker-item {
+  padding: 6px 16px;
+  font-size: 12px;
+  color: #8a8;
+}
+
+.worker-item .worker-id { font-family: monospace; color: #6c6; }
+.worker-item .tool-list { color: #888; font-size: 11px; }
+
+.no-workers { padding: 6px 16px; font-size: 12px; color: #666; font-style: italic; }
+
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#tab-bar {
+  display: flex;
+  background: #16213e;
+  border-bottom: 1px solid #2a2a4a;
+  overflow-x: auto;
+  min-height: 38px;
+}
+
+.tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+  color: #999;
+}
+
+.tab:hover { background: #1a2a4e; }
+.tab.active { border-bottom-color: #a0c4ff; color: #e0e0e0; }
+
+.tab .close-tab {
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.tab .close-tab:hover { color: #e0e0e0; }
+
+#chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-panel {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-panel.active {
+  display: flex;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.msg {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: #0f3460;
+  color: #e0e0e0;
+  border-bottom-right-radius: 4px;
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  background: #2a2a4a;
+  color: #e0e0e0;
+  border-bottom-left-radius: 4px;
+}
+
+.msg.tool-use {
+  align-self: flex-start;
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+  padding: 4px 14px;
+  font-family: monospace;
+}
+
+.msg.error {
+  align-self: center;
+  background: #4a1a1a;
+  color: #f88;
+  font-size: 13px;
+}
+
+.input-bar {
+  display: flex;
+  padding: 12px 16px;
+  gap: 8px;
+  border-top: 1px solid #2a2a4a;
+  background: #16213e;
+}
+
+.input-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.input-bar input:focus { border-color: #a0c4ff; }
+.input-bar input:disabled { opacity: 0.5; }
+
+.input-bar button {
+  padding: 10px 20px;
+  background: #0f3460;
+  color: #a0c4ff;
+  border: 1px solid #a0c4ff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.input-bar button:hover { background: #1a4a7a; }
+.input-bar button:disabled { opacity: 0.5; cursor: default; }
+
+#empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 16px;
+}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h2>UMA Hub</h2>
+  <button id="new-agent-btn">+ New Agent</button>
+  <div class="sidebar-label">Sessions</div>
+  <div id="session-list"></div>
+  <div id="workers-panel">
+    <div class="sidebar-label">Workers</div>
+    <div id="workers-list"><div class="no-workers">No workers connected</div></div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="tab-bar"></div>
+  <div id="chat-area">
+    <div id="empty-state">Click "+ New Agent" to start a session</div>
+  </div>
+</div>
+
+<script>
+const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const BASE = location.origin;
+const WS_BASE = `${WS_PROTO}//${location.host}`;
+
+const openTabs = {};
+let activeSessionId = null;
+
+function $(sel, ctx) { return (ctx || document).querySelector(sel); }
+function $$(sel, ctx) { return (ctx || document).querySelectorAll(sel); }
+
+async function createSession() {
+  const res = await fetch(`${BASE}/sessions`, { method: 'POST' });
+  const data = await res.json();
+  openTab(data.session_id);
+  refreshSessionList();
+}
+
+async function refreshSessionList() {
+  const res = await fetch(`${BASE}/sessions`);
+  const sessions = await res.json();
+  const list = $('#session-list');
+  list.innerHTML = '';
+  sessions.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'session-item' + (s.session_id === activeSessionId ? ' active' : '');
+    const label = document.createElement('span');
+    label.textContent = s.session_id.substring(0, 8) + '...';
+    label.title = s.session_id;
+    div.appendChild(label);
+    const close = document.createElement('button');
+    close.className = 'close-session';
+    close.textContent = '\u00d7';
+    close.onclick = (e) => { e.stopPropagation(); deleteSession(s.session_id); };
+    div.appendChild(close);
+    div.onclick = () => openTab(s.session_id);
+    list.appendChild(div);
+  });
+}
+
+async function deleteSession(sessionId) {
+  await fetch(`${BASE}/sessions/${sessionId}`, { method: 'DELETE' });
+  closeTab(sessionId);
+  refreshSessionList();
+}
+
+function openTab(sessionId) {
+  if (!openTabs[sessionId]) {
+    const panel = createChatPanel(sessionId);
+    $('#chat-area').appendChild(panel);
+
+    const ws = new WebSocket(`${WS_BASE}/sessions/${sessionId}/chat`);
+    ws.onmessage = (e) => handleWsMessage(sessionId, JSON.parse(e.data));
+    ws.onclose = () => {
+      if (openTabs[sessionId]) {
+        openTabs[sessionId].ws = null;
+      }
+    };
+
+    openTabs[sessionId] = { ws, panel };
+    renderTabBar();
+  }
+  activateTab(sessionId);
+}
+
+function closeTab(sessionId) {
+  const tab = openTabs[sessionId];
+  if (!tab) return;
+  if (tab.ws) tab.ws.close();
+  tab.panel.remove();
+  delete openTabs[sessionId];
+  renderTabBar();
+  if (activeSessionId === sessionId) {
+    const remaining = Object.keys(openTabs);
+    if (remaining.length > 0) {
+      activateTab(remaining[remaining.length - 1]);
+    } else {
+      activeSessionId = null;
+      $('#empty-state')?.remove();
+      const empty = document.createElement('div');
+      empty.id = 'empty-state';
+      empty.textContent = 'Click "+ New Agent" to start a session';
+      $('#chat-area').appendChild(empty);
+    }
+  }
+  refreshSessionList();
+}
+
+function activateTab(sessionId) {
+  activeSessionId = sessionId;
+  const empty = $('#empty-state');
+  if (empty) empty.remove();
+  Object.entries(openTabs).forEach(([id, t]) => {
+    t.panel.classList.toggle('active', id === sessionId);
+  });
+  renderTabBar();
+  refreshSessionList();
+  const panel = openTabs[sessionId]?.panel;
+  if (panel) {
+    const msgs = $('.messages', panel);
+    msgs.scrollTop = msgs.scrollHeight;
+    const input = $('input', panel);
+    if (input && !input.disabled) input.focus();
+  }
+}
+
+function renderTabBar() {
+  const bar = $('#tab-bar');
+  bar.innerHTML = '';
+  Object.keys(openTabs).forEach(id => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (id === activeSessionId ? ' active' : '');
+
+    const label = document.createElement('span');
+    label.textContent = id.substring(0, 8);
+    tab.appendChild(label);
+
+    const close = document.createElement('span');
+    close.className = 'close-tab';
+    close.textContent = '\u00d7';
+    close.onclick = (e) => { e.stopPropagation(); closeTab(id); };
+    tab.appendChild(close);
+
+    tab.onclick = () => activateTab(id);
+    bar.appendChild(tab);
+  });
+}
+
+function createChatPanel(sessionId) {
+  const panel = document.createElement('div');
+  panel.className = 'chat-panel';
+  panel.dataset.session = sessionId;
+
+  const messages = document.createElement('div');
+  messages.className = 'messages';
+
+  const inputBar = document.createElement('div');
+  inputBar.className = 'input-bar';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Type a message...';
+
+  const sendBtn = document.createElement('button');
+  sendBtn.textContent = 'Send';
+
+  const send = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const tab = openTabs[sessionId];
+    if (!tab || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
+
+    addMessage(sessionId, 'user', text);
+    tab.ws.send(text);
+    input.value = '';
+    input.disabled = true;
+    sendBtn.disabled = true;
+  };
+
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  sendBtn.addEventListener('click', send);
+
+  inputBar.appendChild(input);
+  inputBar.appendChild(sendBtn);
+
+  panel.appendChild(messages);
+  panel.appendChild(inputBar);
+
+  return panel;
+}
+
+function addMessage(sessionId, type, content) {
+  const tab = openTabs[sessionId];
+  if (!tab) return;
+  const messages = $('.messages', tab.panel);
+  const div = document.createElement('div');
+  div.className = 'msg ' + type;
+  div.textContent = content;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function handleWsMessage(sessionId, msg) {
+  const tab = openTabs[sessionId];
+  if (!tab) return;
+
+  if (msg.type === 'tool_use') {
+    addMessage(sessionId, 'tool-use', `calling ${msg.name}(${JSON.stringify(msg.input)})`);
+  } else if (msg.type === 'done') {
+    addMessage(sessionId, 'assistant', msg.content);
+    const input = $('input', tab.panel);
+    const btn = $('button', tab.panel);
+    if (input) input.disabled = false;
+    if (btn) btn.disabled = false;
+    if (sessionId === activeSessionId && input) input.focus();
+  } else if (msg.type === 'error') {
+    addMessage(sessionId, 'error', msg.content);
+    const input = $('input', tab.panel);
+    const btn = $('button', tab.panel);
+    if (input) input.disabled = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function refreshWorkers() {
+  try {
+    const res = await fetch(`${BASE}/api/workers`);
+    const workers = await res.json();
+    const list = $('#workers-list');
+    if (workers.length === 0) {
+      list.innerHTML = '<div class="no-workers">No workers connected</div>';
+    } else {
+      list.innerHTML = '';
+      workers.forEach(w => {
+        const div = document.createElement('div');
+        div.className = 'worker-item';
+        div.innerHTML = '';
+        const idSpan = document.createElement('span');
+        idSpan.className = 'worker-id';
+        idSpan.textContent = w.worker_id;
+        div.appendChild(idSpan);
+        const toolSpan = document.createElement('span');
+        toolSpan.className = 'tool-list';
+        toolSpan.textContent = ` (${w.tools.length} tool${w.tools.length !== 1 ? 's' : ''}: ${w.tools.join(', ')})`;
+        div.appendChild(toolSpan);
+        list.appendChild(div);
+      });
+    }
+  } catch (e) {}
+}
+
+$('#new-agent-btn').addEventListener('click', createSession);
+
+refreshSessionList();
+refreshWorkers();
+setInterval(refreshWorkers, 5000);
+</script>
+</body>
+</html>

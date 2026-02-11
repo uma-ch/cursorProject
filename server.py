@@ -103,6 +103,15 @@ async def ws_chat_handler(request: web.Request) -> web.WebSocketResponse:
     return ws
 
 
+async def index_redirect(request: web.Request) -> web.HTTPFound:
+    raise web.HTTPFound("/static/index.html")
+
+
+async def workers_handler(request: web.Request) -> web.Response:
+    h = get_hub()
+    return web.json_response(h.get_workers_info())
+
+
 # --- Session routes ---
 
 async def create_session(request: web.Request) -> web.Response:
@@ -220,11 +229,15 @@ def create_app() -> web.Application:
     hub = Hub(conv)
     store = SessionStore()
 
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+
     app = web.Application()
+    app.router.add_get("/", index_redirect)
     app.router.add_get("/healthz", healthz)
     app.router.add_post("/prompt", prompt_handler)
     app.router.add_get("/ws/chat", ws_chat_handler)
     app.router.add_get("/ws/worker", hub.aiohttp_worker_handler)
+    app.router.add_get("/api/workers", workers_handler)
 
     app.router.add_post("/sessions", create_session)
     app.router.add_get("/sessions", list_sessions)
@@ -232,6 +245,8 @@ def create_app() -> web.Application:
     app.router.add_delete("/sessions/{id}", delete_session)
     app.router.add_post("/sessions/{id}/prompt", session_prompt_handler)
     app.router.add_get("/sessions/{id}/chat", session_chat_handler)
+
+    app.router.add_static("/static", static_dir)
 
     return app
 
