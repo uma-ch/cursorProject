@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worker Pool Manager</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.container { max-width: 900px; margin: 0 auto; }
+
+h1 {
+  font-size: 22px;
+  color: #a0c4ff;
+  margin-bottom: 20px;
+}
+
+.config-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.config-bar label {
+  font-size: 13px;
+  color: #888;
+}
+
+.config-bar input {
+  padding: 8px 12px;
+  background: #16213e;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  font-family: monospace;
+}
+
+.config-bar input:focus { border-color: #a0c4ff; }
+
+.config-bar input.hub-url { width: 340px; }
+.config-bar input.base-port { width: 80px; }
+
+.config-bar button {
+  padding: 8px 14px;
+  background: #0f3460;
+  color: #a0c4ff;
+  border: 1px solid #a0c4ff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.config-bar button:hover { background: #1a4a7a; }
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.controls button {
+  padding: 8px 16px;
+  background: #0f3460;
+  color: #a0c4ff;
+  border: 1px solid #a0c4ff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.controls button:hover { background: #1a4a7a; }
+
+.controls button.danger {
+  border-color: #f66;
+  color: #f88;
+}
+
+.controls button.danger:hover { background: #4a1a1a; }
+
+.controls input {
+  padding: 8px 10px;
+  background: #16213e;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 60px;
+  outline: none;
+  text-align: center;
+}
+
+.controls input:focus { border-color: #a0c4ff; }
+
+.controls span { font-size: 13px; color: #888; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th {
+  text-align: left;
+  padding: 10px 12px;
+  background: #16213e;
+  color: #a0c4ff;
+  border-bottom: 1px solid #2a2a4a;
+  font-weight: 600;
+}
+
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+tr:hover { background: #1a2a4e; }
+
+.mono { font-family: monospace; }
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-dot.connected { background: #6c6; }
+.status-dot.disconnected { background: #fc6; }
+.status-dot.unreachable { background: #f66; }
+
+.action-btn {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid #866;
+  color: #f88;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.action-btn:hover { background: #4a1a1a; }
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #555;
+  font-size: 14px;
+}
+
+.summary {
+  font-size: 12px;
+  color: #666;
+  margin-top: 12px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Worker Pool Manager</h1>
+
+  <div class="config-bar">
+    <label>Hub URL:</label>
+    <input type="text" id="hub-url" class="hub-url" placeholder="ws://127.0.0.1:8080/ws/worker">
+    <label>Base Port:</label>
+    <input type="number" id="base-port" class="base-port" value="8081">
+    <button id="save-config-btn">Save</button>
+  </div>
+
+  <div class="controls">
+    <button id="add-btn">+ Add Worker</button>
+    <span>Scale to:</span>
+    <input type="number" id="scale-target" min="0" value="0">
+    <button id="scale-btn">Go</button>
+    <button id="stop-all-btn" class="danger">Stop All</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Port</th>
+        <th>PID</th>
+        <th>Process</th>
+        <th>Health</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="worker-table">
+      <tr><td colspan="6" class="empty-state">No workers in pool</td></tr>
+    </tbody>
+  </table>
+
+  <div class="summary" id="summary"></div>
+</div>
+
+<script>
+const BASE = location.origin;
+
+async function loadConfig() {
+  try {
+    const res = await fetch(`${BASE}/api/config`);
+    const cfg = await res.json();
+    document.getElementById('hub-url').value = cfg.hub_url || '';
+    document.getElementById('base-port').value = cfg.base_port || 8081;
+  } catch (e) {}
+}
+
+async function saveConfig() {
+  const hub_url = document.getElementById('hub-url').value.trim();
+  const base_port = parseInt(document.getElementById('base-port').value) || 8081;
+  await fetch(`${BASE}/api/config`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({hub_url, base_port}),
+  });
+}
+
+async function refreshWorkers() {
+  try {
+    const res = await fetch(`${BASE}/api/workers`);
+    const workers = await res.json();
+    const tbody = document.getElementById('worker-table');
+
+    if (workers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No workers in pool</td></tr>';
+      document.getElementById('summary').textContent = '';
+      document.getElementById('scale-target').value = 0;
+      return;
+    }
+
+    const connected = workers.filter(w => w.health === 'connected').length;
+    const alive = workers.filter(w => w.alive).length;
+    document.getElementById('summary').textContent =
+      `${workers.length} worker(s) | ${alive} alive | ${connected} connected`;
+    document.getElementById('scale-target').value = workers.length;
+
+    tbody.innerHTML = '';
+    workers.forEach(w => {
+      const tr = document.createElement('tr');
+
+      const tdId = document.createElement('td');
+      tdId.className = 'mono';
+      tdId.textContent = w.id;
+      tr.appendChild(tdId);
+
+      const tdPort = document.createElement('td');
+      tdPort.className = 'mono';
+      tdPort.textContent = w.port;
+      tr.appendChild(tdPort);
+
+      const tdPid = document.createElement('td');
+      tdPid.className = 'mono';
+      tdPid.textContent = w.alive ? w.pid : '--';
+      tr.appendChild(tdPid);
+
+      const tdProcess = document.createElement('td');
+      tdProcess.textContent = w.alive ? 'alive' : 'dead';
+      tdProcess.style.color = w.alive ? '#6c6' : '#f66';
+      tr.appendChild(tdProcess);
+
+      const tdHealth = document.createElement('td');
+      const dot = document.createElement('span');
+      dot.className = 'status-dot ' + w.health;
+      tdHealth.appendChild(dot);
+      tdHealth.appendChild(document.createTextNode(w.health));
+      tr.appendChild(tdHealth);
+
+      const tdAction = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'action-btn';
+      btn.textContent = w.alive ? 'Stop' : 'Remove';
+      btn.onclick = async () => {
+        await fetch(`${BASE}/api/workers/${w.id}`, {method: 'DELETE'});
+        refreshWorkers();
+      };
+      tdAction.appendChild(btn);
+      tr.appendChild(tdAction);
+
+      tbody.appendChild(tr);
+    });
+  } catch (e) {}
+}
+
+document.getElementById('save-config-btn').addEventListener('click', saveConfig);
+
+document.getElementById('add-btn').addEventListener('click', async () => {
+  await fetch(`${BASE}/api/workers`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({count: 1}),
+  });
+  refreshWorkers();
+});
+
+document.getElementById('scale-btn').addEventListener('click', async () => {
+  const target = parseInt(document.getElementById('scale-target').value) || 0;
+  await fetch(`${BASE}/api/scale`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({target}),
+  });
+  refreshWorkers();
+});
+
+document.getElementById('stop-all-btn').addEventListener('click', async () => {
+  await fetch(`${BASE}/api/workers`, {method: 'DELETE'});
+  refreshWorkers();
+});
+
+loadConfig();
+refreshWorkers();
+setInterval(refreshWorkers, 3000);
+</script>
+</body>
+</html>
