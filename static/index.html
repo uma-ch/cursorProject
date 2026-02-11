@@ -230,6 +230,24 @@ body {
   font-family: monospace;
 }
 
+.msg.tool-result {
+  align-self: flex-start;
+  background: #1a2a1a;
+  color: #8a8;
+  font-size: 12px;
+  padding: 6px 14px;
+  font-family: monospace;
+  border-left: 2px solid #4a6a4a;
+}
+
+.msg.cancelled {
+  align-self: center;
+  background: #3a3a1a;
+  color: #cc8;
+  font-size: 13px;
+  font-style: italic;
+}
+
 .msg.error {
   align-self: center;
   background: #4a1a1a;
@@ -479,6 +497,24 @@ function createChatPanel(sessionId) {
   const sendBtn = document.createElement('button');
   sendBtn.textContent = 'Send';
 
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'background:#4a1a1a;border:1px solid #f88;color:#f88;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:14px;display:none';
+
+  const setRunning = (running) => {
+    if (running) {
+      sendBtn.style.display = 'none';
+      cancelBtn.style.display = '';
+      input.disabled = true;
+    } else {
+      cancelBtn.style.display = 'none';
+      sendBtn.style.display = '';
+      sendBtn.disabled = false;
+      input.disabled = false;
+      if (sessionId === activeSessionId) input.focus();
+    }
+  };
+
   const send = () => {
     const text = input.value.trim();
     if (!text) return;
@@ -486,14 +522,22 @@ function createChatPanel(sessionId) {
     if (!tab || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
 
     addMessage(sessionId, 'user', text);
-    tab.ws.send(text);
+    tab.ws.send(JSON.stringify({type: 'message', content: text}));
     input.value = '';
-    input.disabled = true;
-    sendBtn.disabled = true;
+    setRunning(true);
   };
+
+  cancelBtn.addEventListener('click', () => {
+    const tab = openTabs[sessionId];
+    if (tab && tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+      tab.ws.send(JSON.stringify({type: 'cancel'}));
+    }
+  });
 
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
   sendBtn.addEventListener('click', send);
+
+  panel._setRunning = setRunning;
 
   const clearBtn = document.createElement('button');
   clearBtn.textContent = 'Clear';
@@ -507,6 +551,7 @@ function createChatPanel(sessionId) {
 
   inputBar.appendChild(input);
   inputBar.appendChild(sendBtn);
+  inputBar.appendChild(cancelBtn);
   inputBar.appendChild(clearBtn);
 
   panel.appendChild(messages);
@@ -532,20 +577,18 @@ function handleWsMessage(sessionId, msg) {
 
   if (msg.type === 'tool_use') {
     addMessage(sessionId, 'tool-use', `calling ${msg.name}(${JSON.stringify(msg.input)})`);
+  } else if (msg.type === 'tool_result') {
+    addMessage(sessionId, 'tool-result', msg.content);
   } else if (msg.type === 'done') {
     addMessage(sessionId, 'assistant', msg.content);
-    const input = $('input', tab.panel);
-    const btn = $('button', tab.panel);
-    if (input) input.disabled = false;
-    if (btn) btn.disabled = false;
-    if (sessionId === activeSessionId && input) input.focus();
+    tab.panel._setRunning(false);
     refreshSessionList();
+  } else if (msg.type === 'cancelled') {
+    addMessage(sessionId, 'cancelled', 'Cancelled');
+    tab.panel._setRunning(false);
   } else if (msg.type === 'error') {
     addMessage(sessionId, 'error', msg.content);
-    const input = $('input', tab.panel);
-    const btn = $('button', tab.panel);
-    if (input) input.disabled = false;
-    if (btn) btn.disabled = false;
+    tab.panel._setRunning(false);
   }
 }
 

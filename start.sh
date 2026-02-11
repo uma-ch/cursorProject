@@ -10,9 +10,9 @@ HUB_WS_URL="ws://localhost:${SERVER_PORT}/ws/worker"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# shellcheck source=.env
 if [ -f .env ]; then
     set -a
+    # shellcheck disable=SC1091
     source .env
     set +a
 fi

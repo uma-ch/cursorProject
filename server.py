@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
@@ -56,6 +57,68 @@ async def prompt_handler(request: web.Request) -> web.Response:
     return web.json_response({"result": result})
 
 
+def _parse_ws_message(raw: str) -> tuple[str, str | None]:
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            if data.get("type") == "cancel":
+                return "cancel", None
+            if data.get("type") == "message":
+                return "message", data.get("content", "")
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return "message", raw
+
+
+async def run_agent_loop(
+    conv: Conversation,
+    ws: web.WebSocketResponse,
+    user_text: str,
+    store: SessionStore | None = None,
+    session_id: str | None = None,
+) -> None:
+    try:
+        response = await conv.send(user_text)
+
+        while response.stop_reason == "tool_use":
+            for block in response.content:
+                if block.type == "tool_use":
+                    await ws.send_str(json.dumps({
+                        "type": "tool_use",
+                        "name": block.name,
+                        "input": block.input,
+                    }))
+            await conv._handle_tool_use(response)
+
+            results = conv.messages[-1]["content"] if conv.messages else []
+            for r in results:
+                if isinstance(r, dict) and r.get("type") == "tool_result":
+                    await ws.send_str(json.dumps({
+                        "type": "tool_result",
+                        "tool_use_id": r["tool_use_id"],
+                        "content": r.get("content", ""),
+                    }))
+
+            response = await conv.step()
+
+        text_parts = [b.text for b in response.content if b.type == "text"]
+        await ws.send_str(json.dumps({
+            "type": "done",
+            "content": "\n".join(text_parts),
+        }))
+
+        if store and session_id:
+            store.save(session_id, conv)
+
+    except asyncio.CancelledError:
+        try:
+            await ws.send_str(json.dumps({"type": "cancelled"}))
+        except Exception:
+            pass
+        if store and session_id:
+            store.save(session_id, conv)
+
+
 async def ws_chat_handler(request: web.Request) -> web.WebSocketResponse:
     h = get_hub()
     ws = web.WebSocketResponse()
@@ -68,31 +131,32 @@ async def ws_chat_handler(request: web.Request) -> web.WebSocketResponse:
     conv = Conversation(model=model, system=system, max_tokens=max_tokens)
     h.register_tools_on(conv)
 
+    current_task: asyncio.Task | None = None
+
+    async def _cancel_current() -> None:
+        nonlocal current_task
+        if current_task and not current_task.done():
+            current_task.cancel()
+            try:
+                await current_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            current_task = None
+
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
-            user_text = msg.data
-
-            response = await conv.send(user_text)
-
-            while response.stop_reason == "tool_use":
-                for block in response.content:
-                    if block.type == "tool_use":
-                        await ws.send_str(json.dumps({
-                            "type": "tool_use",
-                            "name": block.name,
-                            "input": block.input,
-                        }))
-                await conv._handle_tool_use(response)
-                response = await conv.step()
-
-            text_parts = [b.text for b in response.content if b.type == "text"]
-            await ws.send_str(json.dumps({
-                "type": "done",
-                "content": "\n".join(text_parts),
-            }))
-
+            kind, content = _parse_ws_message(msg.data)
+            if kind == "cancel":
+                await _cancel_current()
+            elif kind == "message" and content:
+                await _cancel_current()
+                current_task = asyncio.create_task(
+                    run_agent_loop(conv, ws, content)
+                )
         elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
             break
+
+    await _cancel_current()
 
     return ws
 
@@ -200,33 +264,32 @@ async def session_chat_handler(request: web.Request) -> web.WebSocketResponse:
     conv = s.load(session_id)
     h.register_tools_on(conv, session_id=session_id)
 
+    current_task: asyncio.Task | None = None
+
+    async def _cancel_current() -> None:
+        nonlocal current_task
+        if current_task and not current_task.done():
+            current_task.cancel()
+            try:
+                await current_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            current_task = None
+
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
-            user_text = msg.data
-
-            response = await conv.send(user_text)
-
-            while response.stop_reason == "tool_use":
-                for block in response.content:
-                    if block.type == "tool_use":
-                        await ws.send_str(json.dumps({
-                            "type": "tool_use",
-                            "name": block.name,
-                            "input": block.input,
-                        }))
-                await conv._handle_tool_use(response)
-                response = await conv.step()
-
-            text_parts = [b.text for b in response.content if b.type == "text"]
-            await ws.send_str(json.dumps({
-                "type": "done",
-                "content": "\n".join(text_parts),
-            }))
-
-            s.save(session_id, conv)
-
+            kind, content = _parse_ws_message(msg.data)
+            if kind == "cancel":
+                await _cancel_current()
+            elif kind == "message" and content:
+                await _cancel_current()
+                current_task = asyncio.create_task(
+                    run_agent_loop(conv, ws, content, store=s, session_id=session_id)
+                )
         elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
             break
+
+    await _cancel_current()
 
     return ws
 
