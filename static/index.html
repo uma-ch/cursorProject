@@ -368,9 +368,33 @@ function openTab(sessionId) {
     };
 
     openTabs[sessionId] = { ws, panel };
+    loadHistory(sessionId);
     renderTabBar();
   }
   activateTab(sessionId);
+}
+
+async function loadHistory(sessionId) {
+  try {
+    const res = await fetch(`${BASE}/sessions/${sessionId}`);
+    const data = await res.json();
+    if (!data.messages) return;
+    for (const msg of data.messages) {
+      if (msg.role === 'user') {
+        if (typeof msg.content === 'string') {
+          addMessage(sessionId, 'user', msg.content);
+        }
+      } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_use') {
+            addMessage(sessionId, 'tool-use', `calling ${block.name}(${JSON.stringify(block.input)})`);
+          } else if (block.type === 'text') {
+            addMessage(sessionId, 'assistant', block.text);
+          }
+        }
+      }
+    }
+  } catch (e) {}
 }
 
 function closeTab(sessionId) {

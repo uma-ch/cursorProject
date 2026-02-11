@@ -9,6 +9,9 @@ from typing import Any
 from conversation import Conversation
 
 
+MAX_MESSAGES = 1000
+
+
 def _serialize_messages(messages: list[dict]) -> list[dict]:
     serialized = []
     for msg in messages:
@@ -67,6 +70,8 @@ class SessionStore:
         with open(self._path(session_id), "r") as f:
             data = json.load(f)
         data["messages"] = _serialize_messages(conv.messages)
+        if len(data["messages"]) > MAX_MESSAGES:
+            data["messages"] = data["messages"][-MAX_MESSAGES:]
         if data.get("name", "").startswith("Agent-") and data["messages"]:
             for msg in data["messages"]:
                 if msg["role"] == "user" and isinstance(msg["content"], str):
