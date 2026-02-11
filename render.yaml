@@ -1,5 +1,15 @@
 services:
   - type: web
+    name: uma-hub
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  - type: web
     name: uma-tool-worker
     runtime: python
     buildCommand: pip install -r requirements.txt
