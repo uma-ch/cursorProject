@@ -138,6 +138,12 @@ async def get_session(request: web.Request) -> web.Response:
     return web.json_response(s.get(session_id))
 
 
+async def delete_all_sessions(request: web.Request) -> web.Response:
+    s = get_store()
+    s.delete_all()
+    return web.Response(status=204)
+
+
 async def delete_session(request: web.Request) -> web.Response:
     s = get_store()
     session_id = request.match_info["id"]
@@ -241,6 +247,7 @@ def create_app() -> web.Application:
 
     app.router.add_post("/sessions", create_session)
     app.router.add_get("/sessions", list_sessions)
+    app.router.add_delete("/sessions", delete_all_sessions)
     app.router.add_get("/sessions/{id}", get_session)
     app.router.add_delete("/sessions/{id}", delete_session)
     app.router.add_post("/sessions/{id}/prompt", session_prompt_handler)

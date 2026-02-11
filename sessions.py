@@ -93,5 +93,10 @@ class SessionStore:
         if os.path.exists(path):
             os.remove(path)
 
+    def delete_all(self) -> None:
+        for filename in os.listdir(self._dir):
+            if filename.endswith(".json"):
+                os.remove(os.path.join(self._dir, filename))
+
     def exists(self, session_id: str) -> bool:
         return os.path.exists(self._path(session_id))

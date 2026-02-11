@@ -262,7 +262,10 @@ body {
 <div id="sidebar">
   <h2>UMA Hub</h2>
   <button id="new-agent-btn">+ New Agent</button>
-  <div class="sidebar-label">Sessions</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding-right:12px">
+    <div class="sidebar-label">Sessions</div>
+    <button id="delete-all-btn" style="background:none;border:none;color:#866;font-size:11px;cursor:pointer;padding:2px 6px">Delete All</button>
+  </div>
   <div id="session-list"></div>
   <div id="workers-panel">
     <div class="sidebar-label">Workers</div>
@@ -509,6 +512,12 @@ async function refreshWorkers() {
 }
 
 $('#new-agent-btn').addEventListener('click', createSession);
+
+$('#delete-all-btn').addEventListener('click', async () => {
+  await fetch(`${BASE}/sessions`, { method: 'DELETE' });
+  Object.keys(openTabs).forEach(id => closeTab(id));
+  refreshSessionList();
+});
 
 refreshSessionList();
 refreshWorkers();
