@@ -39,8 +39,6 @@ async def healthz(request: web.Request) -> web.Response:
 
 async def prompt_handler(request: web.Request) -> web.Response:
     h = get_hub()
-    if h.worker_count == 0:
-        return web.Response(status=503, text="no workers connected")
 
     body = await request.json()
     prompt_text = body.get("prompt", "")
@@ -73,10 +71,6 @@ async def ws_chat_handler(request: web.Request) -> web.WebSocketResponse:
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
             user_text = msg.data
-
-            if h.worker_count == 0:
-                await ws.send_str(json.dumps({"type": "error", "content": "no workers connected"}))
-                continue
 
             response = await conv.send(user_text)
 
@@ -160,8 +154,6 @@ async def session_prompt_handler(request: web.Request) -> web.Response:
 
     if not s.exists(session_id):
         return web.Response(status=404, text="session not found")
-    if h.worker_count == 0:
-        return web.Response(status=503, text="no workers connected")
 
     body = await request.json()
     prompt_text = body.get("prompt", "")
@@ -196,10 +188,6 @@ async def session_chat_handler(request: web.Request) -> web.WebSocketResponse:
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
             user_text = msg.data
-
-            if h.worker_count == 0:
-                await ws.send_str(json.dumps({"type": "error", "content": "no workers connected"}))
-                continue
 
             response = await conv.send(user_text)
 
