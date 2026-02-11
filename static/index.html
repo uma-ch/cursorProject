@@ -94,13 +94,38 @@ body {
 }
 
 .worker-item {
-  padding: 6px 16px;
+  padding: 8px 16px;
   font-size: 12px;
   color: #8a8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.worker-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worker-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.worker-status-dot.idle { background: #6c6; }
+.worker-status-dot.busy { background: #fc6; animation: pulse 1s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .worker-item .worker-id { font-family: monospace; color: #6c6; }
-.worker-item .tool-list { color: #888; font-size: 11px; }
+.worker-item .worker-status-label { color: #888; font-size: 11px; }
+.worker-item .worker-detail { color: #888; font-size: 11px; padding-left: 14px; }
 
 .no-workers { padding: 6px 16px; font-size: 12px; color: #666; font-style: italic; }
 
@@ -500,15 +525,39 @@ async function refreshWorkers() {
       workers.forEach(w => {
         const div = document.createElement('div');
         div.className = 'worker-item';
-        div.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.className = 'worker-header';
+
+        const dot = document.createElement('span');
+        dot.className = 'worker-status-dot ' + w.status;
+        header.appendChild(dot);
+
         const idSpan = document.createElement('span');
         idSpan.className = 'worker-id';
         idSpan.textContent = w.worker_id;
-        div.appendChild(idSpan);
-        const toolSpan = document.createElement('span');
-        toolSpan.className = 'tool-list';
-        toolSpan.textContent = ` (${w.tools.length} tool${w.tools.length !== 1 ? 's' : ''}: ${w.tools.join(', ')})`;
-        div.appendChild(toolSpan);
+        header.appendChild(idSpan);
+
+        const statusSpan = document.createElement('span');
+        statusSpan.className = 'worker-status-label';
+        statusSpan.textContent = ' \u2014 ' + w.status;
+        header.appendChild(statusSpan);
+
+        div.appendChild(header);
+
+        const toolLine = document.createElement('div');
+        toolLine.className = 'worker-detail';
+        toolLine.textContent = w.tools.join(', ');
+        div.appendChild(toolLine);
+
+        if (w.sessions && w.sessions.length > 0) {
+          const sessionLine = document.createElement('div');
+          sessionLine.className = 'worker-detail';
+          const names = w.sessions.map(sid => sessionNames[sid] || sid.substring(0, 8));
+          sessionLine.textContent = '\u2192 ' + names.join(', ');
+          div.appendChild(sessionLine);
+        }
+
         list.appendChild(div);
       });
     }

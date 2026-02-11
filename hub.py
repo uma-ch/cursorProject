@@ -22,6 +22,8 @@ class Hub:
         self._tool_rr_index: dict[str, int] = {}
         self._session_affinity: dict[str, str] = {}
         self._pending: dict[str, asyncio.Future[str]] = {}
+        self._busy_workers: set[str] = set()
+        self._call_to_worker: dict[str, str] = {}
         self._worker_ready = asyncio.Event()
         self._worker_count = 0
         self._tool_schemas: list[dict] = []
@@ -50,8 +52,18 @@ class Hub:
             for wid in worker_ids:
                 if wid in self._worker_senders:
                     workers.setdefault(wid, []).append(tool_name)
+
+        affinity_reverse: dict[str, list[str]] = {}
+        for sid, wid in self._session_affinity.items():
+            affinity_reverse.setdefault(wid, []).append(sid)
+
         return [
-            {"worker_id": wid, "tools": tools}
+            {
+                "worker_id": wid,
+                "tools": tools,
+                "status": "busy" if wid in self._busy_workers else "idle",
+                "sessions": affinity_reverse.get(wid, []),
+            }
             for wid, tools in workers.items()
         ]
 
@@ -108,6 +120,9 @@ class Hub:
 
         elif msg_type == "tool_result":
             call_id = msg["call_id"]
+            finished_wid = self._call_to_worker.pop(call_id, None)
+            if finished_wid and not any(w == finished_wid for w in self._call_to_worker.values()):
+                self._busy_workers.discard(finished_wid)
             fut = self._pending.pop(call_id, None)
             if fut and not fut.done():
                 fut.set_result(msg["content"])
@@ -132,6 +147,11 @@ class Hub:
         stale_sessions = [sid for sid, wid in self._session_affinity.items() if wid == worker_id]
         for sid in stale_sessions:
             del self._session_affinity[sid]
+
+        self._busy_workers.discard(worker_id)
+        stale_calls = [cid for cid, wid in self._call_to_worker.items() if wid == worker_id]
+        for cid in stale_calls:
+            del self._call_to_worker[cid]
 
         self._worker_count -= 1
         print(f"Worker {worker_id} disconnected")
@@ -187,6 +207,8 @@ class Hub:
         call_id = str(uuid.uuid4())
         fut: asyncio.Future[str] = asyncio.get_event_loop().create_future()
         self._pending[call_id] = fut
+        self._call_to_worker[call_id] = worker_id
+        self._busy_workers.add(worker_id)
 
         await send(json.dumps({
             "type": "tool_call",
