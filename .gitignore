@@ -3,3 +3,4 @@
 sessions/
 worker_pool.json
 logs/
+__pycache__/
