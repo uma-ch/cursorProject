@@ -77,6 +77,7 @@ async def run_agent_loop(
     store: SessionStore | None = None,
     session_id: str | None = None,
 ) -> None:
+    snapshot = len(conv.messages)
     try:
         response = await conv.send(user_text)
 
@@ -111,12 +112,11 @@ async def run_agent_loop(
             store.save(session_id, conv)
 
     except asyncio.CancelledError:
+        conv.messages = conv.messages[:snapshot]
         try:
             await ws.send_str(json.dumps({"type": "cancelled"}))
         except Exception:
             pass
-        if store and session_id:
-            store.save(session_id, conv)
 
 
 async def ws_chat_handler(request: web.Request) -> web.WebSocketResponse:
