@@ -9,6 +9,9 @@ from aiohttp import web
 from conversation import Conversation
 from hub import Hub
 
+from dotenv import load_dotenv
+load_dotenv()
+
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_MAX_TOKENS = 8192
 
