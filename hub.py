@@ -161,6 +161,9 @@ class Hub:
         stale_calls = [cid for cid, wid in self._call_to_worker.items() if wid == worker_id]
         for cid in stale_calls:
             del self._call_to_worker[cid]
+            fut = self._pending.pop(cid, None)
+            if fut and not fut.done():
+                fut.set_result(f"Error: worker '{worker_id}' disconnected")
 
         self._worker_count -= 1
         print(f"Worker {worker_id} disconnected")
