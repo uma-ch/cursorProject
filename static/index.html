@@ -286,6 +286,7 @@ const BASE = location.origin;
 const WS_BASE = `${WS_PROTO}//${location.host}`;
 
 const openTabs = {};
+const sessionNames = {};
 let activeSessionId = null;
 
 function $(sel, ctx) { return (ctx || document).querySelector(sel); }
@@ -301,13 +302,15 @@ async function createSession() {
 async function refreshSessionList() {
   const res = await fetch(`${BASE}/sessions`);
   const sessions = await res.json();
+  sessions.forEach(s => { sessionNames[s.session_id] = s.name || s.session_id.substring(0, 8); });
   const list = $('#session-list');
   list.innerHTML = '';
+  renderTabBar();
   sessions.forEach(s => {
     const div = document.createElement('div');
     div.className = 'session-item' + (s.session_id === activeSessionId ? ' active' : '');
     const label = document.createElement('span');
-    label.textContent = s.session_id.substring(0, 8) + '...';
+    label.textContent = s.name || s.session_id.substring(0, 8);
     label.title = s.session_id;
     div.appendChild(label);
     const close = document.createElement('button');
@@ -394,7 +397,7 @@ function renderTabBar() {
     tab.className = 'tab' + (id === activeSessionId ? ' active' : '');
 
     const label = document.createElement('span');
-    label.textContent = id.substring(0, 8);
+    label.textContent = sessionNames[id] || id.substring(0, 8);
     tab.appendChild(label);
 
     const close = document.createElement('span');
@@ -475,6 +478,7 @@ function handleWsMessage(sessionId, msg) {
     if (input) input.disabled = false;
     if (btn) btn.disabled = false;
     if (sessionId === activeSessionId && input) input.focus();
+    refreshSessionList();
   } else if (msg.type === 'error') {
     addMessage(sessionId, 'error', msg.content);
     const input = $('input', tab.panel);

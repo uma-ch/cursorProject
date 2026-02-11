@@ -38,8 +38,10 @@ class SessionStore:
         max_tokens: int = 8192,
     ) -> str:
         session_id = str(uuid.uuid4())
+        name = f"Agent-{session_id[:4]}"
         data = {
             "session_id": session_id,
+            "name": name,
             "model": model,
             "system": system,
             "max_tokens": max_tokens,
@@ -65,6 +67,11 @@ class SessionStore:
         with open(self._path(session_id), "r") as f:
             data = json.load(f)
         data["messages"] = _serialize_messages(conv.messages)
+        if data.get("name", "").startswith("Agent-") and data["messages"]:
+            for msg in data["messages"]:
+                if msg["role"] == "user" and isinstance(msg["content"], str):
+                    data["name"] = msg["content"][:30].strip()
+                    break
         with open(self._path(session_id), "w") as f:
             json.dump(data, f, indent=2)
 
@@ -81,6 +88,7 @@ class SessionStore:
                 data = json.load(f)
             sessions.append({
                 "session_id": data["session_id"],
+                "name": data.get("name", data["session_id"][:8]),
                 "model": data["model"],
                 "system": data.get("system"),
                 "created_at": data["created_at"],
