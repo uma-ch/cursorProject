@@ -59,7 +59,8 @@ async def run_worker(server_url: str) -> None:
                             "call_id": call_id,
                             "content": result,
                         }))
-                    except Exception:
+                    except Exception as e:
+                        print(f"Failed to send result for {call_id}: {e}")
                         await ws.close()
 
                 async for raw in ws:
