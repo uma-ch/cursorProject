@@ -101,6 +101,26 @@ class SessionStore:
             })
         return sessions
 
+    def clear_history(self, session_id: str) -> None:
+        with open(self._path(session_id), "r") as f:
+            data = json.load(f)
+        data["messages"] = []
+        data["name"] = f"Agent-{session_id[:4]}"
+        with open(self._path(session_id), "w") as f:
+            json.dump(data, f, indent=2)
+
+    def clear_all_history(self) -> None:
+        for filename in sorted(os.listdir(self._dir)):
+            if not filename.endswith(".json"):
+                continue
+            path = os.path.join(self._dir, filename)
+            with open(path, "r") as f:
+                data = json.load(f)
+            data["messages"] = []
+            data["name"] = f"Agent-{data['session_id'][:4]}"
+            with open(path, "w") as f:
+                json.dump(data, f, indent=2)
+
     def delete(self, session_id: str) -> None:
         path = self._path(session_id)
         if os.path.exists(path):

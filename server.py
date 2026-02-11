@@ -132,6 +132,21 @@ async def get_session(request: web.Request) -> web.Response:
     return web.json_response(s.get(session_id))
 
 
+async def clear_session_history(request: web.Request) -> web.Response:
+    s = get_store()
+    session_id = request.match_info["id"]
+    if not s.exists(session_id):
+        return web.Response(status=404, text="session not found")
+    s.clear_history(session_id)
+    return web.Response(status=204)
+
+
+async def clear_all_history(request: web.Request) -> web.Response:
+    s = get_store()
+    s.clear_all_history()
+    return web.Response(status=204)
+
+
 async def delete_all_sessions(request: web.Request) -> web.Response:
     s = get_store()
     s.delete_all()
@@ -239,7 +254,9 @@ def create_app() -> web.Application:
     app.router.add_get("/sessions/{id}", get_session)
     app.router.add_delete("/sessions/{id}", delete_session)
     app.router.add_post("/sessions/{id}/prompt", session_prompt_handler)
+    app.router.add_post("/sessions/{id}/clear", clear_session_history)
     app.router.add_get("/sessions/{id}/chat", session_chat_handler)
+    app.router.add_post("/sessions/clear-all-history", clear_all_history)
 
     app.router.add_static("/static", static_dir)
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UMA Hub</title>
+<title>Cursor Agent Hub</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -285,10 +285,11 @@ body {
 <body>
 
 <div id="sidebar">
-  <h2>UMA Hub</h2>
+  <h2>Cursor Agent Hub</h2>
   <button id="new-agent-btn">+ New Agent</button>
   <div style="display:flex;align-items:center;justify-content:space-between;padding-right:12px">
     <div class="sidebar-label">Sessions</div>
+    <button id="clear-all-btn" style="background:none;border:none;color:#868;font-size:11px;cursor:pointer;padding:2px 6px">Clear All</button>
     <button id="delete-all-btn" style="background:none;border:none;color:#866;font-size:11px;cursor:pointer;padding:2px 6px">Delete All</button>
   </div>
   <div id="session-list"></div>
@@ -494,8 +495,19 @@ function createChatPanel(sessionId) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
   sendBtn.addEventListener('click', send);
 
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = 'Clear';
+  clearBtn.style.cssText = 'background:none;border:1px solid #866;color:#866;border-radius:8px;padding:10px 12px;cursor:pointer;font-size:13px';
+  clearBtn.onclick = async () => {
+    await fetch(`${BASE}/sessions/${sessionId}/clear`, { method: 'POST' });
+    const msgs = $('.messages', panel);
+    msgs.innerHTML = '';
+    refreshSessionList();
+  };
+
   inputBar.appendChild(input);
   inputBar.appendChild(sendBtn);
+  inputBar.appendChild(clearBtn);
 
   panel.appendChild(messages);
   panel.appendChild(inputBar);
@@ -589,6 +601,15 @@ async function refreshWorkers() {
 }
 
 $('#new-agent-btn').addEventListener('click', createSession);
+
+$('#clear-all-btn').addEventListener('click', async () => {
+  await fetch(`${BASE}/sessions/clear-all-history`, { method: 'POST' });
+  Object.values(openTabs).forEach(tab => {
+    const msgs = $('.messages', tab.panel);
+    if (msgs) msgs.innerHTML = '';
+  });
+  refreshSessionList();
+});
 
 $('#delete-all-btn').addEventListener('click', async () => {
   await fetch(`${BASE}/sessions`, { method: 'DELETE' });
