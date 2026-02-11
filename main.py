@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 from __future__ import annotations
+
 
 import argparse
 import asyncio
@@ -8,6 +10,8 @@ import sys
 from conversation import Conversation
 from tools import ALL_TOOLS
 
+from dotenv import load_dotenv
+load_dotenv()
 
 async def chat_mode(conv: Conversation) -> None:
     print("Chat mode. Type 'quit' or Ctrl-D to exit.\n")
