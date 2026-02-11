@@ -25,6 +25,9 @@ async def chat_mode(conv: Conversation) -> None:
         if user_input.strip().lower() in ("quit", "exit"):
             break
         response = await conv.send(user_input)
+        while response.stop_reason == "tool_use":
+            await conv._handle_tool_use(response)
+            response = await conv.step()
         for block in response.content:
             if block.type == "text":
                 print(f"\nassistant> {block.text}\n")
